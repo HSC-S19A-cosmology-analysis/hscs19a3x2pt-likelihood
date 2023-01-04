@@ -193,6 +193,12 @@ def get_MCSamples(dirname, label=None, blindby=None, sampler='MN', print_warning
                     ranges[name] -= modes[j]
         
     samples = getdist.MCSamples(samples=samps,names=names,weights=weights,labels=labels,ranges=ranges,label=label)
+    
+    # Set derived or not
+    for ParamInfo in samples.paramNames.names:
+        if not ParamInfo.name in config['likelihood']['param']:
+            ParamInfo.isDerived = True
+    
     return samples
 
 def get_predefined_better_label(names):
