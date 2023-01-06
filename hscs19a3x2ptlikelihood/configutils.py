@@ -97,4 +97,10 @@ class config_class:
         pdof = self.get_dof_param()
         return ddof, pdof
 
-
+    def get_prior_cosmology(self, verbose=True):
+        lconf = copy.deepcopy(self.config['likelihood'])
+        dataset = self.get_dataset()
+        
+        from .likelihood import prior_cosmology_class
+        like = prior_cosmology_class(lconf, dataset, verbose=verbose)
+        return like

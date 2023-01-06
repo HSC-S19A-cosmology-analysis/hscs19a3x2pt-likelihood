@@ -905,6 +905,65 @@ class darkemu_x_hod_likelihood_class(likelihood_class):
         names = np.array(names)
         return names
     
+    
+class prior_cosmology_class(likelihood_class):
+    """
+    This is the prior class.
+    """
+    def __init__(self, config, dataset, verbose=True):
+        super().__init__(config, dataset, verbose=verbose)
+        
+        self.cosmology = cosmology_class()
+        self.linear_model = linear_darkemu_class({'verbose':config['verbose']})
+        
+    def update_param(self, sampling_param):
+        super().update_param(sampling_param)
+        pdict = self.get_current_param(which='full', dtype=dict)
+        
+        # set cosmology
+        cparam = [pdict[name] for name in self.cosmology.get_cparam_name()]
+        cparam = np.array(cparam)
+        self.cosmology.set_cosmology(cparam)
+        self.linear_model.set_cosmology(self.cosmology)
+        
+    def get_derived(self):
+        Omm = self.cosmology.get_Om()
+        sigma8 = self.linear_model.get_sigma8()
+        S8 = sigma8*(Omm/0.3)**0.5
+        derived = np.hstack([Omm, sigma8, S8, 1, 1])
+        return derived
+    
+    def get_param_names_derived(self):
+        names = ['Omm']
+        names+= ['sigma8']
+        names+= ['S8']
+        names+= ['lnlike', 'lnpost']
+        names = np.array(names)
+        return names
+        
+    def gen(self, nsamples, seed=1):
+        generator = np.random.default_rng(seed=seed)
+        
+        nparam  = len(self.get_param_names_sampling())
+        
+        cubes = generator.uniform(0, 1, size=nparam*nsamples).reshape(nsamples, nparam)
+        
+        for cube in cubes:
+            self.map_u_v(cube)
+            
+        # Append derived
+        derived = []
+        for i, cube in enumerate(cubes):
+            self.update_param(cube)
+            derived.append(self.get_derived())
+        derived = np.array(derived)
+            
+        samples = np.hstack([cubes, derived])
+            
+        return samples
+        
+        
+    
 def eval_lnP_v(v, config):
     """
     evaluate P(x) at x = v.

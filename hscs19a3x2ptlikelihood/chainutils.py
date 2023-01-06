@@ -74,7 +74,7 @@ names_mockinput_dict = {'Ombh2':0.02225,
                         'sigma8':0.831,
                         'S8':0.831*((1.0-0.6844)/0.3)**0.5}
 
-def get_MCSamples(dirname, label=None, blindby=None, sampler='MN', print_warning=True, reweight_names1=None, reweight_names2=None, rmdoll=False, append_bf=True, append_map=True, use_equal_weight=True, n_burnin=1000, sampler_blindby='MN'):
+def get_MCSamples(dirname, label=None, blindby=None, sampler='MN', print_warning=True, reweight_names1=None, reweight_names2=None, rmdoll=False, append_bf=True, append_map=True, use_equal_weight=True, n_burnin=1000, sampler_blindby='MN', name_tag=None):
     """
     Args:
         dirname          (str) : directory name of MultiNest output
@@ -192,7 +192,7 @@ def get_MCSamples(dirname, label=None, blindby=None, sampler='MN', print_warning
                 if name in ranges:
                     ranges[name] -= modes[j]
         
-    samples = getdist.MCSamples(samples=samps,names=names,weights=weights,labels=labels,ranges=ranges,label=label)
+    samples = getdist.MCSamples(samples=samps,names=names,weights=weights,labels=labels,ranges=ranges,label=label, name_tag=name_tag)
     
     # Set derived or not
     for ParamInfo in samples.paramNames.names:
@@ -357,7 +357,15 @@ def get_names_from_MCSamples(samples):
     return np.array([name.name for name in samples.getParamNames().names])
 
 
-# 2d bias
+# bias
+def get_1d_bias_prob(samples, name, val):
+    from scipy.interpolate import interp1d
+    d = samples.get1DDensity(name)
+    p = interp1d(d.x, d.P)(val)
+    sel = d.P>p
+    pint = np.sum(d.P[sel])/np.sum(d.P)
+    return pint
+
 def get_2d_bias_prob(samples, name1, name2, val1, val2):
     from scipy.interpolate import interp2d
     d = samples.get2DDensity(name1, name2)
@@ -794,3 +802,31 @@ def write_GLM_dof(dirname, verbose=True):
     
 def load_GLM_dof(dirname):
     return np.loadtxt(os.path.join(dirname, 'GLMdof.dat'))
+
+
+class ChainListManager(dict):
+    """
+    Manages the array of MCSamples of getdist.
+    """
+    def __getattr__(self, item):
+        return super().__getitem__(item)
+
+    def __setattr__(self, item, value):
+        return super().__setitem__(item, value)
+    
+    def len(self):
+        return len(self)
+    
+    def set_MCSamples(self, mcsamples, name_tag=None):
+        if name_tag is None and hasattr(mcsamples, 'name_tag'):
+            name_tag = mcsamples.name_tag
+        else:
+            name_tag = str(len(self))
+        self[name_tag] = mcsamples
+        
+    def list(self):
+        return list(self.values())
+    
+    def keys(self):
+        return list(super().keys())
+    
