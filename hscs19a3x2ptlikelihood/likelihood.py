@@ -323,6 +323,10 @@ class likelihood_class:
         _ = t_p - t_ML
         chi2_MAP = chi2_ML + np.dot(_, np.dot(iC, _))
         
+        self.icov_GLM_like = iC
+        self.icov_GLM_pri  = iC_Pi
+        self.icov_GLM_post = iC + iC_Pi
+        
         return chi2_ML, chi2_MAP
     
     def estimate_effective_dof_by_GLM_from_noiseless_mock(self, dlnp=0.01, size=1000, return_samples=False):
@@ -613,7 +617,7 @@ class minimalbias_likelihood_class(likelihood_class):
                 a = pdict['alphapsf']; b = pdict['betapsf']
                 xim+= probe.get_psfbias_term(a, b, which='xim', logcenmin=-np.inf, logcenmax=np.inf)
                 probe.set_signal(xim, logcenmin=-np.inf, logcenmax=np.inf)
-            print(name, time.time()-t0)
+            #print(name, time.time()-t0)
         if self.config['verbose']:
             sig=self.probes_model.get_signal()
             print('Signal = ', sig)

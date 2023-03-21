@@ -104,7 +104,7 @@ class cosmicshear_class:
           return_func (bool) : return func or array
         Returns:
           q_over_chil: lensing efficiency divided by comoving distance at 
-                       lens redshift. unit is [h/Mpc]
+                       lens redshift. unit is [(h/Mpc)^2]
                        
         See for photo-z bias, https://www.overleaf.com/read/kkkjqvcwwfhr
         """

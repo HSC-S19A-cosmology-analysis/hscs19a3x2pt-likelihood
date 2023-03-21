@@ -205,8 +205,9 @@ def plot_2dcontour(x,y,P,ax,alphas=[0.68, 0.95], color='C0', label=None, alpha=0
         cs = ax.contourf(x,y,P,levels=levels,colors=pale_colors, alpha=alpha)
     else:
         cs = ax.contour(x,y,P,levels=levels,colors=pale_colors, alpha=alpha, linewidths=lw)
-    proxy = plt.Rectangle((0, 0), 1, 1, fc=color, label=label, alpha=alpha)
-    ax.patches += [proxy]
+    proxy = plt.Rectangle((np.nan, np.nan), 0,0, fc=color, label=label, alpha=alpha)
+    #ax.patches += [proxy]
+    ax.add_patch(proxy)
     return ax
 
 def plot_2dgaussian(xc,yc,cov,ax,alphas=[0.68, 0.95], color='C0',nsigma=3, label=None,alpha=0.8):
@@ -244,13 +245,14 @@ def _errbar_plot(MCSamples, pnames, axes, y, fmt, color, alphas, label=None, cap
             xerr = np.array([[ x-lower, upper-x ]]).T
             ax.errorbar(x, y, xerr=xerr, fmt=fmt, color=pcolor, capsize=capsize)
 
-def errbar_plot(MCSamples_list, pnames, alphas=[0.68, 0.95], color='C0', fmt='o', capsize=0, padding_y=0.0, padding_x=0.2, offset_y=0.0, figsize=None, fig=None, label_fontsize=18, xlabel_fontsize=23, last_ax_ratio=2.5, partition=None, partition_color='gray', partition_ls=':', partition_lw=1, overplot=False, MCSamples_labels=None, fill=False, fill_idx=0, fill_color='C0', fill_alpha=0.2, markers=None, highlight_id=-1, highlight_color='red', highlight_alpha=0.1):
+def errbar_plot(MCSamples_list, pnames, alphas=[0.68, 0.95], color='C0', fmt='o', capsize=0, padding_y=0.0, padding_x=0.2, offset_y=0.0, figsize=None, fig=None, label_fontsize=18, xlabel_fontsize=23, last_ax_ratio=2.5, partition=None, partition_color='gray', partition_ls=':', partition_lw=1, overplot=False, MCSamples_labels=None, fill=False, fill_idx=0, fill_color='gray', fill_alpha=0.2, markers=None, highlight_id=-1, highlight_color='red', highlight_alpha=0.1):
     if fig is None:
         if figsize is None:
             figsize = (5*len(pnames), len(MCSamples_list)/2.0)
         width_ratios = [1 for pname in pnames]
         width_ratios[-1] = last_ax_ratio
         fig, axes = plt.subplots(1, len(pnames), gridspec_kw={'width_ratios':width_ratios}, figsize=figsize)
+        axes = [axes] if not isinstance(axes, np.ndarray) else axes
     else:
         axes = fig.get_axes()
     alphas = np.sort(alphas)
@@ -289,6 +291,7 @@ def errbar_plot(MCSamples_list, pnames, alphas=[0.68, 0.95], color='C0', fmt='o'
     xlim = ax.get_xlim()
     dx = xlim[1]-xlim[0]
     ax.set_xlim((xlim[0], xlim[1]+dx*(last_ax_ratio-1)))
+    ax.set_xlabel(plabels_dict[pname], position=(1.0/2.0/last_ax_ratio, 0.0), fontsize=xlabel_fontsize)
 
     # MCSample label
     N = len(MCSamples_list)
@@ -298,6 +301,8 @@ def errbar_plot(MCSamples_list, pnames, alphas=[0.68, 0.95], color='C0', fmt='o'
             label = samples.getLabel()
         else:
             label = MCSamples_labels[i]
+        if label is None:
+            label = samples.getLabel()
         #ax.text(1/last_ax_ratio, y, label.replace("_","\_"), ha='left', va='center', transform=ax.transAxes, fontsize=label_fontsize)    
         ax.text(1/last_ax_ratio, y, label, ha='left', va='center', transform=ax.transAxes, fontsize=label_fontsize)    
 

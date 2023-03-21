@@ -438,6 +438,15 @@ class probes_class:
             dof += self.probes[name].get_dof(plmin, plmax)
         return dof
     
+    def get_mask(self, probes=None, logcenmin_dict=None, logcenmax_dict=None):
+        probes, lmin, lmax = self._prep_get(probes, logcenmin_dict, logcenmax_dict)
+        mask = []
+        for name in probes:
+            plmin = lmin.get(name, None)
+            plmax = lmax.get(name, None)
+            mask.append(self.probes[name]._get_bins_mask(logcenmin=plmin, logcenmax=plmax))
+        return np.concatenate(mask)
+    
     def copy(self):
         return copy.deepcopy(self)
 
@@ -570,7 +579,8 @@ class dataset_class:
         if 'abspath' in config:
             datasets_abs_path = config['abspath']
         else:
-            print('config does not include `abspath` key, assumes the directry of the datasets to be ${hscs19a3x2pt}/hscs19a3x2pt-data-cov')
+            if config.get('verbose', True):
+                print('config does not include `abspath` key, assumes the directry of the datasets to be ${hscs19a3x2pt}/hscs19a3x2pt-data-cov')
             datasets_abs_path = os.path.join(os.environ['hscs19a3x2pt'], 'hscs19a3x2pt-data-cov')
         # probes
         update_probe_config_file_path(datasets_abs_path, config['dirname'], config['probes'])
@@ -854,12 +864,22 @@ def update_probe_config_file_path(datasetdir, dirname, config):
             keys = ['bins', 'signal']
         # replace if needed
         for key in keys:
+            # When file exists, then skip
+            if os.path.exists(config[name][key]):
+                print(f'{config[name][key]} exists.')
+                continue
             config[name][key] = os.path.join(datasetdir, dirname, config[name][key])
 
 def update_covariance_config_file_path(datasetdir, dirname, config):
-    config['fname'] = os.path.join(datasetdir, dirname, config['fname'])
+    # When file exists, then skip
+    if not os.path.exists(config['fname']):
+        config['fname'] = os.path.join(datasetdir, dirname, config['fname'])
     
 def update_sample_config_file_path(datasetdir, dirname, config):
     for key in ['nzl', 'nzs']:
         for i, fname in enumerate(config[key]):
+            # When file exists, then skip
+            if os.path.exists(config[key][i]):
+                print(f'{config[key][i]} exists.')
+                continue
             config[key][i] = os.path.join(datasetdir, dirname, config[key][i])

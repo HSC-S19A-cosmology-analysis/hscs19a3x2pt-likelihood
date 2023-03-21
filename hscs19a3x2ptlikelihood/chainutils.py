@@ -592,12 +592,13 @@ def summary_table(samples_list, names):
         mode  = get_mode(samples, dtype=dict)
         HDI   = get_HDI(samples, alphas=[0.68], dtype=dict)
         MAP   = get_MAP(samples, dtype=dict)
+        mean  = get_mean(samples, dtype=dict)
         data.append([])
         index.append(samples.label)
         for name in names:
             lim = HDI.get(name, [np.nan, np.nan])[0]
             m   = mode.get(name, np.nan)
-            text = '$%.3f_{%.3f}^{+%.3f} (%.3f)$'%(m, lim[0]-m, lim[1]-m, MAP.get(name, np.nan))
+            text = '$%.3f_{%.3f}^{+%.3f} (%.3f, %.3f)$'%(m, lim[0]-m, lim[1]-m, MAP.get(name, np.nan), mean.get(name, np.nan))
             data[-1].extend([text])
     columns = [names_label_dict.get(name, name) for name in names]
 
@@ -621,7 +622,7 @@ def nestcheck_plot(dirnames, names, root='mn', kde='getdist', n_simulate=100, bl
     if isinstance(dirnames, str):
         dirnames = [dirnames]
     
-    runs = [data_processing.process_multinest_run('mn', dirname) for dirname in dirnames]
+    runs = [data_processing.process_multinest_run('mn-', dirname) for dirname in dirnames]
     
     # check blind or not
     blind = False
@@ -824,8 +825,15 @@ class ChainListManager(dict):
             name_tag = str(len(self))
         self[name_tag] = mcsamples
         
-    def list(self):
-        return list(self.values())
+    def list(self, keys=None):
+        if keys is None:
+            return list(self.values())
+        else:
+            ret = []
+            for key in keys:
+                if key in self:
+                    ret.append(self[key])
+            return ret
     
     def keys(self):
         return list(super().keys())
