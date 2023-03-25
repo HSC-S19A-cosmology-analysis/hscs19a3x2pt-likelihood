@@ -245,7 +245,7 @@ def _errbar_plot(MCSamples, pnames, axes, y, fmt, color, alphas, label=None, cap
             xerr = np.array([[ x-lower, upper-x ]]).T
             ax.errorbar(x, y, xerr=xerr, fmt=fmt, color=pcolor, capsize=capsize)
 
-def errbar_plot(MCSamples_list, pnames, alphas=[0.68, 0.95], color='C0', fmt='o', capsize=0, padding_y=0.0, padding_x=0.2, offset_y=0.0, figsize=None, fig=None, label_fontsize=18, xlabel_fontsize=23, last_ax_ratio=2.5, partition=None, partition_color='gray', partition_ls=':', partition_lw=1, overplot=False, MCSamples_labels=None, fill=False, fill_idx=0, fill_color='gray', fill_alpha=0.2, markers=None, highlight_id=-1, highlight_color='red', highlight_alpha=0.1):
+def errbar_plot(MCSamples_list, pnames, alphas=[0.68, 0.95], color='C0', fmt='o', capsize=0, padding_y=0.0, padding_x=0.1, offset_y=0.0, figsize=None, fig=None, label_fontsize=18, xlabel_fontsize=23, last_ax_ratio=2.5, partition=None, partition_color='gray', partition_ls=':', partition_lw=1, overplot=False, MCSamples_labels=None, fill=False, fill_idx=0, fill_color='gray', fill_alpha=0.2, markers=None, highlight_id=-1, highlight_color='red', highlight_alpha=0.1):
     if fig is None:
         if figsize is None:
             figsize = (5*len(pnames), len(MCSamples_list)/2.0)
@@ -322,10 +322,11 @@ def errbar_plot(MCSamples_list, pnames, alphas=[0.68, 0.95], color='C0', fmt='o'
                 
     # fill between errorbar of specified MCSamples for comparison
     axes = fig.get_axes()
-    for i, pname in enumerate(pnames):
-        lim1, lim2 = chainutils.get_HDI(MCSamples_list[fill_idx], dtype=dict, alphas=[0.68])[pname][0]
-        ax = axes[i]
-        ax.axvspan(lim1, lim2, color=fill_color, alpha=fill_alpha)
+    if fill:
+        for i, pname in enumerate(pnames):
+            lim1, lim2 = chainutils.get_HDI(MCSamples_list[fill_idx], dtype=dict, alphas=[0.68])[pname][0]
+            ax = axes[i]
+            ax.axvspan(lim1, lim2, color=fill_color, alpha=fill_alpha)
         
     if markers is not None:
         for ax, pname in zip(axes, pnames):
