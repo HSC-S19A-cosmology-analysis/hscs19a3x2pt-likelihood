@@ -908,8 +908,90 @@ class darkemu_x_hod_likelihood_class(likelihood_class):
         names+= ['lnlike', 'lnpost']
         names = np.array(names)
         return names
+
+class eboss_dr16_bao_lrg_elg_class(likelihood_class):
+    def __init__(self, config, dataset, verbose=True):
+        super().__init__(config, dataset, verbose=verbose)
+        self.cosmology = cosmology_class()
+
+        self.rd = 147.8 # Mpc
+        self.c = 299792.458 # speed of light in km/s
+
+        # load DR12 LRG
+        fname = "../../external-likelihoods/eboss_DR16_v1_1_1/BAO-only/sdss_DR12_LRG_BAO_DMDH.txt"
+        d = np.genfromtxt(fname)
+        self.z_DR12_LRG = d[:,0]
+        self.DMDH_over_rd_DR12_LRG = d[:,1] # DM_over_rd(low-z) DH_over_rd(low-z) DM_over_rd(high-z) DH_over_rd(high-z)
+        fname = "../../external-likelihoods/eboss_DR16_v1_1_1/BAO-only/sdss_DR12_LRG_BAO_DMDH_covtot.txt"
+        self.DMDH_over_rd_DR12_LRG_icov = np.linalg.inv(np.load(fname))
+        
+        # load eBOSS LRG
+        fname = "../../external-likelihoods/eboss_DR16_v1_1_1/BAO-only/sdss_DR16_LRG_BAO_DMDH.txt"
+        d = np.genfromtxt(fname)
+        self.z_DR16_LRG = d[:,0]
+        self.DMDH_over_rd_DR16_LRG = d[:,1] # DM_over_rd DH_over_rd
+        fname = "../../external-likelihoods/eboss_DR16_v1_1_1/BAO-only/sdss_DR16_LRG_BAO_DMDH_covtot.txt"
+        self.DMDH_over_rd_DR16_LRG_icov = np.linalg.inv(np.load(fname))
+        
+        # load eBOSS ELG DV likelihood
+        self.z_DR16_ELG = 0.845
+        fname = "../../external-likelihoods/eboss_DR16_v1_1_1/BAO-only/sdss_DR16_ELG_BAO_DVtable.txt"
+        _DV_over_rd, _DV_over_rd_like = np.loadtxt(fname, unpack = True)
+        self.DV_over_rd_like = ius(_DV_over_rd, _DV_over_rd_like)
+
+    def update_param(self, sampling_param):
+        super().update_param(sampling_param)
+        pdict = self.get_current_param(which='full', dtype=dict)
+        
+        # set cosmology
+        cparam = [pdict[name] for name in self.cosmology.get_cparam_name()]
+        cparam = np.array(cparam)
+        self.cosmology.set_cosmology(cparam)
+
+    def get_chi2(self):
+        apcosmo = self.cosmology.get_astropycosmo()
+
+        # chi2 of DR12 LRG
+        DM = self.apcosmo.comoving_distance(self.z_DR12_LRG[0,2]).value() # Mpc
+        H = apcosmo.H(self.z_DR12_LRG[0,2]).value()
+        DH = self.c/H # Mpc
+        DMDH_over_rd_DR12_LRG_pred = np.array([DM[0]/self.rd, DH[0]/self.rd, DM[1]/self.rd, DH[1]/self.rd])
+        diff = DMDH_over_rd_DR12_LRG_pred - self.DMDH_over_rd_DR12_LRG
+        chi2 = np.dot(diff, np.dot(self.DMDH_over_rd_DR12_LRG_icov, diff))
+
+        # chi2 of DR16 LRG
+        DM = self.apcosmo.comoving_distance(self.z_DR16_LRG[0]).value() # Mpc
+        H = apcosmo.H(self.z_DR16_LRG[0]).value()
+        DH = self.c/H # Mpc
+        DMDH_over_rd_DR16_LRG_pred = np.array([DM[0]/self.rd, DH[0]/self.rd])
+        diff = DMDH_over_rd_DR16_LRG_pred - self.DMDH_over_rd_DR16_LRG
+        chi2 *= np.dot(diff, np.dot(self.DMDH_over_rd_DR16_LRG_icov, diff))
+
+        # chi2 of DR16 ELG
+        DM = self.apcosmo.comoving_distance(self.z_DR16_ELG).value() # Mpc
+        H = apcosmo.H(self.z_DR16_ELG).value()
+        DH = self.c/H # Mpc
+        DV = [self.z_DR16_ELG*DH*DM**2]**(1./3.)
+        like = self.DV_over_rd_like(DV/self.rd)
+        chi2 *= -2.*np.log(like)
+
+        return chi2
+        
+    def get_derived(self):
+        Omm = self.cosmology.get_Om()
+        sigma8 = self.linear_model.get_sigma8()
+        S8 = sigma8*(Omm/0.3)**0.5
+        derived = np.hstack([Omm, sigma8, S8, 1, 1])
+        return derived
     
-    
+    def get_param_names_derived(self):
+        names = ['Omm']
+        names+= ['sigma8']
+        names+= ['S8']
+        names+= ['lnlike', 'lnpost']
+        names = np.array(names)
+        return names
+        
 class prior_cosmology_class(likelihood_class):
     """
     This is the prior class.
