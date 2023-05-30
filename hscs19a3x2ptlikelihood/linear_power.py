@@ -123,6 +123,9 @@ class linear_darkemu_class(linear_base):
             self.compute_pklin_table(k_arr, z_arr)
         return self.pklin_table.copy()
 
+    def get_hubble(self):
+        return np.sqrt((self.cosmo.cparam[0, 0] + self.cosmo.cparam[0, 1] + 0.00064) / (1 - self.cosmo.cparam[0, 2]))
+
 # camb based linear class
 try:
     import camb
