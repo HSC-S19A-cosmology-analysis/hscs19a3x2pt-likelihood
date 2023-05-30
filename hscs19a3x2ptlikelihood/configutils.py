@@ -46,18 +46,38 @@ class config_class:
         returns a likelihood instance
         """
         lconf = copy.deepcopy(self.config['likelihood'])
-        dataset = self.get_dataset()
-        
-        if lconf['name'] == 'minimalbias':
-            from .likelihood import minimalbias_likelihood_class
-            like = minimalbias_likelihood_class(lconf, dataset, verbose=verbose)
-            return like
-        elif lconf['name'] == 'darkemu_x_hod':
-            from .likelihood import darkemu_x_hod_likelihood_class
-            like = darkemu_x_hod_likelihood_class(lconf, dataset, verbose=verbose)
-            return like
+        if isinstance(lconf['name'], list):
+            l_lconf_name = lconf['name']
         else:
+            l_lconf_name = [lconf['name']]
+
+        l_like = []
+        for lconf_name in l_lconf_name:
+            if lconf_name == 'minimalbias':
+                dataset = self.get_dataset()
+                from .likelihood import minimalbias_likelihood_class
+                l_like.append(minimalbias_likelihood_class(lconf, dataset, verbose=verbose))
+            elif lconf_name == 'darkemu_x_hod':
+                dataset = self.get_dataset()
+                from .likelihood import darkemu_x_hod_likelihood_class
+                l_like.append(darkemu_x_hod_likelihood_class(lconf, dataset, verbose=verbose))
+
+            if lconf_name == 'BAO_DR16_DR12_LRG':
+                from .likelihood import eboss_dr16_bao_dr12_lrg_class
+                l_like.append(eboss_dr16_bao_dr12_lrg_class(lconf, verbose=verbose))
+
+            if lconf_name == 'BAO_DR16_DR16_LRG':
+                from .likelihood import eboss_dr16_bao_dr16_lrg_class
+                l_like.append(eboss_dr16_bao_dr16_lrg_class(lconf, verbose=verbose))
+
+            if lconf_name == 'BAO_DR16_ELG':
+                from . likelihood import eboss_dr16_bao_elg_class
+                l_like.append(eboss_dr16_bao_elg_class(lconf, verbose=verbose))
+
+        if len(l_like) == 0:
             raise NotImplemented
+
+        return l_like
             
     def get_MultiNest_base_name(self):
         return os.path.join(self.config['output'], 'mn-')

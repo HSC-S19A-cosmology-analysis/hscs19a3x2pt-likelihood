@@ -14,6 +14,7 @@ names_label_dict = {'Ombh2':r'$\Omega_{\rm b}h^2$',
                     'mnu':r'$\sum m_{\rm nu}$',
                     'wa':r'$w_a$',
                     'Omk':r'$\Omega_{K}$',
+                    'h': r'$h$',
                     'b1_0':r'$b_{1,0}$',
                     'b1_1':r'$b_{1,1}$',
                     'b1_2':r'$b_{1,2}$',
@@ -50,7 +51,9 @@ names_label_dict = {'Ombh2':r'$\Omega_{\rm b}h^2$',
                     'alpha_2': r'\alpha(z_{\rm CMASS2})',
                     'kappa_0': r'\kappa(z_{\rm LOWZ})',
                     'kappa_1': r'\kappa(z_{\rm CMASS1})',
-                    'kappa_2': r'\kappa(z_{\rm CMASS2})'}
+                    'kappa_2': r'\kappa(z_{\rm CMASS2})',
+                    # BAO parameters
+                    'rd': r'$r_{\rm d}$'}
 
 names_mockinput_dict = {'Ombh2':0.02225,
                         'Omch2':0.1198,
@@ -74,7 +77,7 @@ names_mockinput_dict = {'Ombh2':0.02225,
                         'sigma8':0.831,
                         'S8':0.831*((1.0-0.6844)/0.3)**0.5}
 
-def get_MCSamples(dirname, label=None, blindby=None, sampler='MN', print_warning=True, reweight_names1=None, reweight_names2=None, rmdoll=False, append_bf=True, append_map=True, use_equal_weight=True, n_burnin=1000, sampler_blindby='MN', name_tag=None):
+def get_MCSamples(dirname, label=None, blindby=None, sampler='MN', print_warning=True, reweight_names1=None, reweight_names2=None, rmdoll=False, get_hubble = False, append_bf=True, append_map=True, use_equal_weight=True, n_burnin=1000, sampler_blindby='MN', name_tag=None):
     """
     Args:
         dirname          (str) : directory name of MultiNest output
@@ -136,6 +139,16 @@ def get_MCSamples(dirname, label=None, blindby=None, sampler='MN', print_warning
     names   = np.loadtxt(os.path.join(dirname, 'param_names.dat'), dtype=str)
     names   = names[:]
     
+    # add hubble parameter
+    if get_hubble:
+        h = np.sqrt((samps[:,np.where(names == 'Omch2')[0][0]] + samps[:,np.where(names == 'Ombh2')[0][0]] + 0.00064) / (1 - samps[:,np.where(names == 'Omde')[0][0]]))
+        print(h)
+        print(samps.shape)
+        print(h.shape)
+        samps = np.append(samps, h.reshape(h.shape[0], 1), axis=1)
+        
+        names = np.append(names, 'h')
+    print(samps)
     # append BF and MAP with small weights=1e-3.
     for point_fname, append in zip(['bf-.dat', 'map-.dat'], [append_bf, append_map]):
         if os.path.exists(os.path.join(dirname, point_fname)) and append:

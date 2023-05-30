@@ -1,8 +1,10 @@
+import os
 import numpy as np
 import copy
 import pandas
 from .utils import setdefault_config
 from scipy.special import erfinv, erf
+from scipy.interpolate import InterpolatedUnivariateSpline as ius
 pandas.set_option('display.max_columns', 200)
 
 config_default = {'param':{}, 'verbose':True}
@@ -20,11 +22,12 @@ class likelihood_class:
         setdefault_config(self.config, config_default)
         self.dataset= dataset
         
-        self.probes_data  = self.dataset.get_probes()
-        self.probes_model = self.dataset.get_probes().copy()
-        self.covariance  = self.dataset.get_covariance()
-        self.probe_names = self.probes_data.probe_names
-        
+        if self.dataset is not None:
+            self.probes_data  = self.dataset.get_probes()
+            self.probes_model = self.dataset.get_probes().copy()
+            self.covariance  = self.dataset.get_covariance()
+            self.probe_names = self.probes_data.probe_names
+
         self.init_param()
         self.reset_nlikecall()
         
@@ -908,8 +911,294 @@ class darkemu_x_hod_likelihood_class(likelihood_class):
         names+= ['lnlike', 'lnpost']
         names = np.array(names)
         return names
+
+# CAMB for BAO
+try:
+    import camb
+except:
+    print('import fail: camb')
+from .utils import empty_dict
+class bao_camb_class:
+    def __init__(self, config=empty_dict()):
+        self.config = config
+        self.cosmology = cosmology_class()
+        self.set_cosmology(self.cosmology, init=True)
+        
+    def set_cosmology(self, cosmology, init=False):
+        if (not self.cosmology == cosmology) or init:
+            self.camb_pars = camb.CAMBparams(WantTransfer=True, 
+                                             WantCls=False, 
+                                             Want_CMB_lensing=False, 
+                                             DoLensing=False)
+            h = cosmology.get_h()
+            As= cosmology.get_As()
+            Ombh2, Omch2, Omde, ln10p10As, ns, w0, mnu, wa, Omk = cosmology.get_cosmology()
+            self.camb_pars.set_cosmology(H0=h*100, ombh2=Ombh2, omch2=Omch2, omk=Omk, num_massive_neutrinos=1, mnu=mnu)
+            self.camb_pars.set_initial_power(camb.InitialPowerLaw(As=As, ns=ns))
+            self.camb_pars.set_dark_energy(w=w0, cs2=1.0, wa=wa, dark_energy_model='fluid')
+        else:
+            print("Got same cosmological parameters. Keep quantities already computed")
+        
     
+    def get_rd(self):
+        results = camb.get_results(self.camb_pars)
+        rd = results.get_derived_params()['rdrag']
+        return rd
+
+class eboss_dr16_bao_dr12_lrg_class(likelihood_class):
+    def __init__(self, config, verbose=True):
+        super().__init__(config, None, verbose=verbose)
+        self.cosmology = cosmology_class()
+        self.c = 299792.458 # speed of light in km/s
+
+        # load DR12 LRG
+        fname = os.path.join(os.path.realpath(os.path.dirname(__file__)), "../../external-likelihoods/eboss_DR16_v1_1_1/BAO-only/sdss_DR12_LRG_BAO_DMDH.txt")
+        d = np.genfromtxt(fname)
+        self.z_DR12_LRG = d[:,0]
+        self.DMDH_over_rd_DR12_LRG = d[:,1] # DM_over_rd(low-z) DH_over_rd(low-z) DM_over_rd(high-z) DH_over_rd(high-z)
+        fname = os.path.join(os.path.realpath(os.path.dirname(__file__)), "../../external-likelihoods/eboss_DR16_v1_1_1/BAO-only/sdss_DR12_LRG_BAO_DMDH_covtot.txt")
+        self.DMDH_over_rd_DR12_LRG_icov = np.linalg.inv(np.loadtxt(fname))
+
+        # linear mode
+        mconf = self.config['model']
+        if mconf['linear_model_name'] == 'darkemu':
+            linconf = {'verbose':self.config['verbose']}
+            self.linear_model = linear_darkemu_class(linconf)
+            del linconf
+        elif mconf['linear_model_name'] == 'camb':
+            linconf = {'verbose':self.config['verbose']}
+            self.linear_model = linear_camb_class(linconf)
+        else:
+            raise NotImplemented
+
+        # rd
+        if mconf['rd'] == 'camb':
+            baoconf = {'verbose':self.config['verbose']}
+            self.bao_camb = bao_camb_class(baoconf)
+        elif mconf['rd'] == 'margenalize':
+            self.rd = 147.8 # Mpc 
+        else:
+            raise NotImplemented 
+        
+        # update_param
+        p = self.get_current_param(which='sampling', dtype='array')
+        self.update_param(p)
+
+    def update_param(self, sampling_param):
+        super().update_param(sampling_param)
+        pdict = self.get_current_param(which='full', dtype=dict)
+
+        # set cosmology
+        cparam = [pdict[name] for name in self.cosmology.get_cparam_name()]
+        cparam = np.array(cparam)
+        self.cosmology.set_cosmology(cparam)
+        self.linear_model.set_cosmology(self.cosmology)
+        self.bao_camb.set_cosmology(self.cosmology)
+
+        # set r_d
+        mconf = self.config['model']
+        if mconf['rd'] == 'camb':
+            self.rd = self.bao_camb.get_rd()
+            print("updated rd:", self.rd)
+        elif mconf['rd'] == 'margenalize':
+            self.rd = pdict['rd']
+
+    def get_chi2(self):
+        apcosmo = self.cosmology.get_astropycosmo()
+
+        DM = apcosmo.comoving_distance(self.z_DR12_LRG[[0,2]]).value # Mpc
+        H = 100.*self.linear_model.get_hubble()*apcosmo.efunc(self.z_DR12_LRG[[0,2]])
+        DH = self.c/H # Mpc
+        DMDH_over_rd_DR12_LRG_pred = np.array([DM[0]/self.rd, DH[0]/self.rd, DM[1]/self.rd, DH[1]/self.rd])
+        diff = DMDH_over_rd_DR12_LRG_pred - self.DMDH_over_rd_DR12_LRG
+        chi2 = np.dot(diff, np.dot(self.DMDH_over_rd_DR12_LRG_icov, diff))
+
+        return chi2
+        
+    def get_derived(self):
+        Omm = self.cosmology.get_Om()
+        sigma8 = self.linear_model.get_sigma8()
+        S8 = sigma8*(Omm/0.3)**0.5
+        derived = np.hstack([Omm, sigma8, S8, 1, 1])
+        return derived
     
+    def get_param_names_derived(self):
+        names = ['Omm']
+        names+= ['sigma8']
+        names+= ['S8']
+        names+= ['lnlike', 'lnpost']
+        names = np.array(names)
+        return names
+
+class eboss_dr16_bao_dr16_lrg_class(likelihood_class):
+    def __init__(self, config, verbose=True):
+        super().__init__(config, None, verbose=verbose)
+        self.cosmology = cosmology_class()
+        self.c = 299792.458 # speed of light in km/s
+
+        # load eBOSS LRG
+        fname = os.path.join(os.path.realpath(os.path.dirname(__file__)), "../../external-likelihoods/eboss_DR16_v1_1_1/BAO-only/sdss_DR16_LRG_BAO_DMDH.txt")
+        d = np.genfromtxt(fname)
+        self.z_DR16_LRG = d[:,0]
+        self.DMDH_over_rd_DR16_LRG = d[:,1] # DM_over_rd DH_over_rd
+        fname = os.path.join(os.path.realpath(os.path.dirname(__file__)), "../../external-likelihoods/eboss_DR16_v1_1_1/BAO-only/sdss_DR16_LRG_BAO_DMDH_covtot.txt")
+        self.DMDH_over_rd_DR16_LRG_icov = np.linalg.inv(np.loadtxt(fname))
+
+        # linear model
+        mconf = self.config['model']
+        if mconf['linear_model_name'] == 'darkemu':
+            linconf = {'verbose':self.config['verbose']}
+            self.linear_model = linear_darkemu_class(linconf)
+            del linconf
+        elif mconf['linear_model_name'] == 'camb':
+            linconf = {'verbose':self.config['verbose']}
+            self.linear_model = linear_camb_class(linconf)
+        else:
+            raise NotImplemented
+
+        # rd
+        if mconf['rd'] == 'camb':
+            baoconf = {'verbose':self.config['verbose']}
+            self.bao_camb = bao_camb_class(baoconf)
+        elif mconf['rd'] == 'margenalize':
+            self.rd = 147.8 # Mpc 
+        else:
+            raise NotImplemented 
+        
+        # update_param
+        p = self.get_current_param(which='sampling', dtype='array')
+        self.update_param(p)
+
+    def update_param(self, sampling_param):
+        super().update_param(sampling_param)
+        pdict = self.get_current_param(which='full', dtype=dict)
+        
+        # set cosmology
+        cparam = [pdict[name] for name in self.cosmology.get_cparam_name()]
+        cparam = np.array(cparam)
+        self.cosmology.set_cosmology(cparam)
+        self.linear_model.set_cosmology(self.cosmology)
+        self.bao_camb.set_cosmology(self.cosmology)
+
+        # set r_d
+        mconf = self.config['model']
+        if mconf['rd'] == 'camb':
+            self.rd = self.bao_camb.get_rd()
+        elif mconf['rd'] == 'margenalize':
+            self.rd = pdict['rd']
+
+    def get_chi2(self):
+        apcosmo = self.cosmology.get_astropycosmo()
+
+        # chi2 of DR16 LRG
+        print(self.z_DR16_LRG)
+        DM = apcosmo.comoving_distance(self.z_DR16_LRG[0]).value # Mpc
+        H = 100.*self.linear_model.get_hubble()*apcosmo.efunc(self.z_DR16_LRG[0])
+        DH = self.c/H # Mpc
+        DMDH_over_rd_DR16_LRG_pred = np.array([DM/self.rd, DH/self.rd])
+        diff = DMDH_over_rd_DR16_LRG_pred - self.DMDH_over_rd_DR16_LRG
+        chi2 = np.dot(diff, np.dot(self.DMDH_over_rd_DR16_LRG_icov, diff))
+        
+        return chi2
+        
+    def get_derived(self):
+        Omm = self.cosmology.get_Om()
+        sigma8 = self.linear_model.get_sigma8()
+        S8 = sigma8*(Omm/0.3)**0.5
+        derived = np.hstack([Omm, sigma8, S8, 1, 1])
+        return derived
+    
+    def get_param_names_derived(self):
+        names = ['Omm']
+        names+= ['sigma8']
+        names+= ['S8']
+        names+= ['lnlike', 'lnpost']
+        names = np.array(names)
+        return names
+
+class eboss_dr16_bao_elg_class(likelihood_class):
+    def __init__(self, config, verbose=True):
+        super().__init__(config, None, verbose=verbose)
+        self.cosmology = cosmology_class()
+        self.c = 299792.458 # speed of light in km/s
+
+        # load eBOSS ELG DV likelihood
+        self.z_DR16_ELG = 0.845
+        fname = os.path.join(os.path.realpath(os.path.dirname(__file__)), "../../external-likelihoods/eboss_DR16_v1_1_1/BAO-only/sdss_DR16_ELG_BAO_DVtable.txt")
+        _DV_over_rd, _DV_over_rd_like = np.loadtxt(fname, unpack = True)
+        self.DV_over_rd_like = ius(_DV_over_rd, _DV_over_rd_like)
+
+        # linear model
+        mconf = self.config['model']
+        if mconf['linear_model_name'] == 'darkemu':
+            linconf = {'verbose':self.config['verbose']}
+            self.linear_model = linear_darkemu_class(linconf)
+            del linconf
+        elif mconf['linear_model_name'] == 'camb':
+            linconf = {'verbose':self.config['verbose']}
+            self.linear_model = linear_camb_class(linconf)
+        else:
+            raise NotImplemented
+
+        # rd
+        if mconf['rd'] == 'camb':
+            baoconf = {'verbose':self.config['verbose']}
+            self.bao_camb = bao_camb_class(baoconf)
+        elif mconf['rd'] == 'margenalize':
+            self.rd = 147.8 # Mpc 
+        else:
+            raise NotImplemented 
+
+        # update_param
+        p = self.get_current_param(which='sampling', dtype='array')
+        self.update_param(p)
+
+    def update_param(self, sampling_param):
+        super().update_param(sampling_param)
+        pdict = self.get_current_param(which='full', dtype=dict)
+        self.bao_camb.set_cosmology(self.cosmology)
+        
+        # set cosmology
+        cparam = [pdict[name] for name in self.cosmology.get_cparam_name()]
+        cparam = np.array(cparam)
+        self.cosmology.set_cosmology(cparam)
+        self.linear_model.set_cosmology(self.cosmology)
+
+        # set r_d
+        mconf = self.config['model']
+        if mconf['rd'] == 'camb':
+            self.rd = self.bao_camb.get_rd()
+        elif mconf['rd'] == 'margenalize':
+            self.rd = pdict['rd']
+
+    def get_chi2(self):
+        apcosmo = self.cosmology.get_astropycosmo()
+
+        # chi2 of DR16 ELG
+        DM = apcosmo.comoving_distance(self.z_DR16_ELG).value # Mpc
+        H = 100.*self.linear_model.get_hubble()*apcosmo.efunc(self.z_DR16_ELG)
+        DH = self.c/H # Mpc
+        DV = (self.z_DR16_ELG*DH*DM**2)**(1./3.)
+        like = self.DV_over_rd_like(DV/self.rd)
+        chi2 = -2.*np.log(like)
+
+        return chi2
+        
+    def get_derived(self):
+        Omm = self.cosmology.get_Om()
+        sigma8 = self.linear_model.get_sigma8()
+        S8 = sigma8*(Omm/0.3)**0.5
+        derived = np.hstack([Omm, sigma8, S8, 1, 1])
+        return derived
+    
+    def get_param_names_derived(self):
+        names = ['Omm']
+        names+= ['sigma8']
+        names+= ['S8']
+        names+= ['lnlike', 'lnpost']
+        names = np.array(names)
+        return names
+        
 class prior_cosmology_class(likelihood_class):
     """
     This is the prior class.
