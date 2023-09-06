@@ -62,6 +62,14 @@ class config_class:
                 from .likelihood import darkemu_x_hod_likelihood_class
                 l_like.append(darkemu_x_hod_likelihood_class(lconf, dataset, verbose=verbose))
 
+            if lconf_name == 'BAO_6dFGS':
+                from .likelihood import sixdf_bao_class
+                l_like.append(sixdf_bao_class(lconf, verbose=verbose))
+
+            if lconf_name == 'BAO_SDSS_MGS':
+                from .likelihood import sdss_dr7_mgs_class
+                l_like.append(sdss_dr7_mgs_class(lconf, verbose=verbose))
+
             if lconf_name == 'BAO_DR16_DR12_LRG':
                 from .likelihood import eboss_dr16_bao_dr12_lrg_class
                 l_like.append(eboss_dr16_bao_dr12_lrg_class(lconf, verbose=verbose))
