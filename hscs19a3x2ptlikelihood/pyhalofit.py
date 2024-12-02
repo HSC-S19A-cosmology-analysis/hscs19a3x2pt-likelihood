@@ -9,6 +9,26 @@ from scipy.optimize import fsolve
 # DOI : 10.1088/0004-637X/761/2/152
 
 def pklintable2pkhalotable(k_in, z_in, pklintable_in, Omm0, Omde0, w0, wa, h, mnu, f1h=1, dz=0.05):
+    """
+    Compute halofit power spectrum from linear power spectrum.
+    This function works on the array of redshifts.
+
+    Args:
+        k_in (array): k [h/Mpc]
+        z_in (array): redshift
+        pklintable_in (array): linear power spectrum [(Mpc/h)^3]
+        Omm0 (float): Omega_m0
+        Omde0 (float): Omega_de0
+        w0 (float): w0
+        wa (float): wa
+        h (float): h
+        mnu (float): sum of neutrino mass [eV]
+        f1h (float): f1h, relative amplitude of the halo term
+        dz (float): redshift bin width
+
+    Returns:
+        pkhalo (array): halofit power spectrum [(Mpc/h)^3]
+    """
     # Change unit
     k            = k_in.copy()*h # [1/Mpc]
     pklintable   = pklintable_in.copy()/h**3 # [Mpc^3]
@@ -57,6 +77,25 @@ def pklintable2pkhalotable(k_in, z_in, pklintable_in, Omm0, Omde0, w0, wa, h, mn
     return pkhalo
 
 def pklin2pkhalofit(k_in, z_in, pklin_in, Omm0, Omde0, w0, wa, h, mnu, f1h=1):
+    """
+    Compute halofit power spectrum from linear power spectrum.
+    This function works on a single redshift (float, int).
+
+    Args:
+        k_in (array): k [h/Mpc]
+        z_in (float): redshift
+        pklin_in (array): linear power spectrum [(Mpc/h)^3]
+        Omm0 (float): Omega_m0
+        Omde0 (float): Omega_de0
+        w0 (float): w0
+        wa (float): wa
+        h (float): h
+        mnu (float): sum of neutrino mass [eV]
+        f1h (float): f1h, relative amplitude of the halo term
+
+    Returns:
+        pkhalo (array): halofit power spectrum [(Mpc/h)^3]
+    """
     # Change unit
     k       = k_in*h # [1/Mpc]
     pklin   = pklin_in/h**3 # [Mpc^3]
@@ -118,6 +157,19 @@ def _get_R_sigma(k, z, Delta_L):
     return R_sigma
 
 def _get_neff_C(k, Delta_L, R_sigma, ep=1e-2):
+    """
+    Compute effective spectral index and curvature of the power spectrum.
+
+    Args:
+        k (array): k [1/Mpc]
+        Delta_L (array): linear power spectrum [(Mpc/h)^3]
+        R_sigma (float): smoothing scale to compute the variance of linear power spectrum.
+        ep (float): error of R_sigma.
+
+    Returns:
+        neff (float): effective spectral index of the power spectrum.
+        C (float): curvature of the power spectrum.
+    """
     R = R_sigma*(1+np.linspace(-ep, ep, 3))
     sigma = np.array([_sigma(k, Delta_L, _R) for _R in R])
 
@@ -128,11 +180,31 @@ def _get_neff_C(k, Delta_L, R_sigma, ep=1e-2):
     R3 = 0.5*(R2[1:]+R2[:-1])
 
     neff = -3 - np.mean(dlnsigma_dlnR)
-    C    = - d2lnsigma_d2lnR
+    C    = - d2lnsigma_d2lnR[0]
 
     return neff, C
 
 def _get_coeffs(neff, C, Omdez, w0, fnu0):
+    """
+    Compute coefficients of the halofit power spectrum.
+
+    Args:
+        neff (float): effective spectral index of the power spectrum.
+        C (float): curvature of the power spectrum.
+        Omdez (float): Omega_de(z)
+        w0 (float): w0
+        fnu0 (float): sum of neutrino mass fraction at z=0
+
+    Returns:
+        an (float): an
+        bn (float): bn
+        cn (float): cn
+        gamman (float): gamman
+        alphan (float): alphan
+        betan (float): betan
+        mun (float): mun
+        nun (float
+    """
     an = 10.**( 1.5222 + 2.8553*neff + 2.3706*neff**2 + 0.9903*neff**3 + 0.2250*neff**4 - 0.6038*C + 0.1749*Omdez*(1.+w0) )
     bn = 10.**(-0.5642 + 0.5864*neff + 0.5716*neff**2 - 1.5474*C + 0.2279*Omdez*(1.+w0))
     cn = 10.**( 0.3698 + 2.0404*neff + 0.8161*neff**2 + 0.5869*C)
@@ -144,6 +216,23 @@ def _get_coeffs(neff, C, Omdez, w0, fnu0):
     return an, bn, cn, gamman, alphan, betan, mun, nun
 
 def _get_pkhalo(k, Delta_L, R_sigma, Ommz, Omdez, Omm0, fnu0, coeffs, f1h=1):
+    """
+    Compute halofit power spectrum based on the computed coefficients.
+
+    Args:
+        k (array): k [1/Mpc]
+        Delta_L (array): linear power spectrum [(Mpc/h)^3]
+        R_sigma (float): smoothing scale to compute the variance of linear power spectrum.
+        Ommz (float): Omega_m(z)
+        Omdez (float): Omega_de(z)
+        Omm0 (float): Omega_m0
+        fnu0 (float): sum of neutrino mass fraction at z=0
+        coeffs (array): coefficients of the halofit power spectrum.
+        f1h (float): f1h, relative amplitude of the halo term
+    
+    Returns:
+        pkhalo (array): halofit power spectrum [(Mpc/h)^3]
+    """
     an, bn, cn, gamman, alphan, betan, mun, nun = coeffs
     y = k * R_sigma
     f = y/4. + y**2/8.
@@ -159,6 +248,7 @@ def _get_pkhalo(k, Delta_L, R_sigma, Ommz, Omdez, Omm0, fnu0, coeffs, f1h=1):
     return pkhalo
 
 def _get_Ommz(z, Omm0, Omde0, w0, wa):
+    """returns Omega_m(z)"""
     a = 1.0/(1+z)
     Qa2 = a**(-1.0-3.0*(w0+wa))*np.exp(-3.0*(1-a)*wa)
     Omt =1.0+(Omm0+Omde0-1.0)/(1-Omm0-Omde0+Omde0*Qa2+Omm0/a)
@@ -166,6 +256,7 @@ def _get_Ommz(z, Omm0, Omde0, w0, wa):
     return Ommz
 
 def _get_Omdez(z, Omm0, Omde0, w0, wa):
+    """returns Omega_de(z)""" 
     a = 1.0/(1+z)
     Qa2 = a**(-1.0-3.0*(w0+wa))*np.exp(-3.0*(1-a)*wa)
     Omt =1.0+(Omm0+Omde0-1.0)/(1-Omm0-Omde0+Omde0*Qa2+Omm0/a)
@@ -173,6 +264,7 @@ def _get_Omdez(z, Omm0, Omde0, w0, wa):
     return Omde
 
 def _get_fnu0(mnu, Omm0, h):
+    """return Omega_nu(z=0)"""
     Omnuh2   = 0.00064*(mnu/0.06)
     fnu = Omnuh2/h**2 / Omm0
     return fnu
